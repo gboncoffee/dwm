@@ -59,7 +59,7 @@
 
 /* enums */
 enum { CurNormal, CurResize, CurMove, CurLast }; /* cursor */
-enum { SchemeNorm, SchemeSel }; /* color schemes */
+enum { SchemeNorm, SchemeSel, SchemeTabActive, SchemeTabInactive }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetWMFullscreen, NetActiveWindow, NetWMWindowType,
        NetWMWindowTypeDialog, NetClientList, NetLast }; /* EWMH atoms */
@@ -111,6 +111,7 @@ typedef struct {
 	void (*arrange)(Monitor *);
 } Layout;
 
+typedef struct Pertag Pertag;
 struct Monitor {
 	char ltsymbol[16];
 	float mfact;
@@ -130,6 +131,7 @@ struct Monitor {
 	Monitor *next;
 	Window barwin;
 	const Layout *lt[2];
+	Pertag *pertag;
 };
 
 typedef struct {
@@ -161,6 +163,7 @@ static void destroynotify(XEvent *e);
 static void detach(Client *c);
 static void detachstack(Client *c);
 static Monitor *dirtomon(int dir);
+static void doubledeck(Monitor *m);
 static void drawbar(Monitor *m);
 static void drawbars(void);
 static void enternotify(XEvent *e);
@@ -211,6 +214,7 @@ static void tagmon(const Arg *arg);
 static void tile(Monitor *m);
 static void togglebar(const Arg *arg);
 static void togglefloating(const Arg *arg);
+static void togglefullscr(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
 static void unfocus(Client *c, int setfocus);
@@ -270,6 +274,15 @@ static Window root, wmcheckwin;
 
 /* configuration, allows nested code to access above variables */
 #include "config.h"
+
+struct Pertag {
+	unsigned int curtag, prevtag; /* current and previous tag */
+	int nmasters[LENGTH(tags) + 1]; /* number of windows in master area */
+	float mfacts[LENGTH(tags) + 1]; /* mfacts per tag */
+	unsigned int sellts[LENGTH(tags) + 1]; /* selected layouts */
+	const Layout *ltidxs[LENGTH(tags) + 1][2]; /* matrix of tags and layouts indexes  */
+	int showbars[LENGTH(tags) + 1]; /* display bar for the current tag */
+};
 
 /* compile-time check if all tags fit into an unsigned int bit array. */
 struct NumTags { char limitexceeded[LENGTH(tags) > 31 ? -1 : 1]; };
@@ -380,6 +393,98 @@ applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact)
 }
 
 void
+bartabdraw(Monitor *m, Client *c, int unused, int x, int w, int groupactive) {
+	if (!c) return;
+	int i, nclienttags = 0, nviewtags = 0;
+
+	drw_setscheme(drw, scheme[
+		m->sel == c ? SchemeSel : (groupactive ? SchemeTabActive: SchemeTabInactive)
+	]);
+	drw_text(drw, x, 0, w, bh, lrpad / 2, c->name, 0);
+
+	// Floating win indicator
+	if (c->isfloating) drw_rect(drw, x + 2, 2, 5, 5, 0, 0);
+
+	// Optional borders between tabs
+	if (BARTAB_BORDERS) {
+		XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBorder].pixel);
+		XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, 0, 1, bh);
+		XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + w, 0, 1, bh);
+	}
+
+	// Optional tags icons
+	for (i = 0; i < LENGTH(tags); i++) {
+		if ((m->tagset[m->seltags] >> i) & 1) { nviewtags++; }
+		if ((c->tags >> i) & 1) { nclienttags++; }
+	}
+	if (BARTAB_TAGSINDICATOR == 2 || nclienttags > 1 || nviewtags > 1) {
+		for (i = 0; i < LENGTH(tags); i++) {
+			drw_rect(drw,
+				( x + w - 2 - ((LENGTH(tags) / BARTAB_TAGSROWS) * BARTAB_TAGSPX)
+					- (i % (LENGTH(tags)/BARTAB_TAGSROWS)) + ((i % (LENGTH(tags) / BARTAB_TAGSROWS)) * BARTAB_TAGSPX)
+				),
+				( 2 + ((i / (LENGTH(tags)/BARTAB_TAGSROWS)) * BARTAB_TAGSPX)
+					- ((i / (LENGTH(tags)/BARTAB_TAGSROWS)))
+				),
+				BARTAB_TAGSPX, BARTAB_TAGSPX, (c->tags >> i) & 1, 0
+			);
+		}
+	}
+}
+
+void
+battabclick(Monitor *m, Client *c, int passx, int x, int w, int unused) {
+	if (passx >= x && passx <= x + w) {
+		focus(c);
+		restack(selmon);
+	}
+}
+
+void
+bartabcalculate(
+	Monitor *m, int offx, int sw, int passx,
+	void(*tabfn)(Monitor *, Client *, int, int, int, int)
+) {
+	Client *c;
+	int
+		i, clientsnmaster = 0, clientsnstack = 0, clientsnfloating = 0,
+		masteractive = 0, fulllayout = 0, floatlayout = 0,
+		x, w, tgactive;
+
+	for (i = 0, c = m->clients; c; c = c->next) {
+		if (!ISVISIBLE(c)) continue;
+		if (c->isfloating) { clientsnfloating++; continue; }
+		if (m->sel == c) { masteractive = i < m->nmaster; }
+		if (i < m->nmaster) { clientsnmaster++; } else { clientsnstack++; }
+		i++;
+	}
+	for (i = 0; i < LENGTH(bartabfloatfns); i++) if (m ->lt[m->sellt]->arrange == bartabfloatfns[i]) { floatlayout = 1; break; }
+	for (i = 0; i < LENGTH(bartabmonfns); i++) if (m ->lt[m->sellt]->arrange == bartabmonfns[i]) { fulllayout = 1; break; }
+	for (c = m->clients, i = 0; c; c = c->next) {
+		if (!ISVISIBLE(c)) continue;
+		if (clientsnmaster + clientsnstack == 0 || floatlayout) {
+			 x = offx + (((m->mw - offx - sw) / (clientsnmaster + clientsnstack + clientsnfloating)) * i);
+			 w = (m->mw - offx - sw) / (clientsnmaster + clientsnstack + clientsnfloating);
+			 tgactive = 1;
+		} else if (!c->isfloating && (fulllayout || ((clientsnmaster == 0) ^ (clientsnstack == 0)))) {
+			 x = offx + (((m->mw - offx - sw) / (clientsnmaster + clientsnstack)) * i);
+			 w = (m->mw - offx - sw) / (clientsnmaster + clientsnstack);
+			 tgactive = 1;
+		} else if (i < m->nmaster && !c->isfloating) {
+			 x = offx + ((((m->mw * m->mfact) - offx) /clientsnmaster) * i);
+			 w = ((m->mw * m->mfact) - offx) / clientsnmaster;
+			 tgactive = masteractive;
+		} else if (!c->isfloating) {
+			 x = (m->mw * m->mfact) + ((((m->mw * (1 - m->mfact)) - sw) / clientsnstack) * (i - m->nmaster));
+			 w = ((m->mw * (1 - m->mfact)) - sw) / clientsnstack;
+			 tgactive = !masteractive;
+		} else continue;
+		tabfn(m, c, passx, x, w, tgactive);
+		i++;
+	}
+}
+
+void
 arrange(Monitor *m)
 {
 	if (m)
@@ -443,8 +548,8 @@ buttonpress(XEvent *e)
 			click = ClkLtSymbol;
 		else if (ev->x > selmon->ww - (int)TEXTW(stext))
 			click = ClkStatusText;
-		else
-			click = ClkWinTitle;
+		else // Focus clicked tab bar item
+			bartabcalculate(selmon, x, TEXTW(stext) - lrpad + 2, ev->x, battabclick);
 	} else if ((c = wintoclient(ev->window))) {
 		focus(c);
 		restack(selmon);
@@ -634,6 +739,7 @@ Monitor *
 createmon(void)
 {
 	Monitor *m;
+	unsigned int i;
 
 	m = ecalloc(1, sizeof(Monitor));
 	m->tagset[0] = m->tagset[1] = 1;
@@ -644,6 +750,20 @@ createmon(void)
 	m->lt[0] = &layouts[0];
 	m->lt[1] = &layouts[1 % LENGTH(layouts)];
 	strncpy(m->ltsymbol, layouts[0].symbol, sizeof m->ltsymbol);
+	m->pertag = ecalloc(1, sizeof(Pertag));
+	m->pertag->curtag = m->pertag->prevtag = 1;
+
+	for (i = 0; i <= LENGTH(tags); i++) {
+		m->pertag->nmasters[i] = m->nmaster;
+		m->pertag->mfacts[i] = m->mfact;
+
+		m->pertag->ltidxs[i][0] = m->lt[0];
+		m->pertag->ltidxs[i][1] = m->lt[1];
+		m->pertag->sellts[i] = m->sellt;
+
+		m->pertag->showbars[i] = m->showbar;
+	}
+
 	return m;
 }
 
@@ -696,6 +816,27 @@ dirtomon(int dir)
 }
 
 void
+doubledeck(Monitor *m) {
+	unsigned int i, n, mw;
+	Client *c;
+
+	for(n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
+	if(n == 0)
+		return;
+
+	if(n > m->nmaster)
+		mw = m->nmaster ? m->ww * m->mfact : 0;
+	else
+		mw = m->ww;
+
+	for(i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
+		if(i < m->nmaster)
+			resize(c, m->wx, m->wy, mw - (2*c->bw), m->wh - (2*c->bw), False);
+		else
+			resize(c, m->wx + mw, m->wy, m->ww - mw - (2*c->bw), m->wh - (2*c->bw), False);
+}
+
+void
 drawbar(Monitor *m)
 {
 	int x, w, tw = 0;
@@ -734,15 +875,13 @@ drawbar(Monitor *m)
 	drw_setscheme(drw, scheme[SchemeNorm]);
 	x = drw_text(drw, x, 0, w, bh, lrpad / 2, m->ltsymbol, 0);
 
+	// Draw bartabgroups
+	drw_rect(drw, x, 0, m->ww - tw - x, bh, 1, 1);
 	if ((w = m->ww - tw - x) > bh) {
-		if (m->sel) {
-			drw_setscheme(drw, scheme[m == selmon ? SchemeSel : SchemeNorm]);
-			drw_text(drw, x, 0, w, bh, lrpad / 2, m->sel->name, 0);
-			if (m->sel->isfloating)
-				drw_rect(drw, x + boxs, boxs, boxw, boxw, m->sel->isfixed, 0);
-		} else {
-			drw_setscheme(drw, scheme[SchemeNorm]);
-			drw_rect(drw, x, 0, w, bh, 1, 1);
+		bartabcalculate(m, x, tw, -1, bartabdraw);
+		if (BARTAB_BOTTOMBORDER) {
+			drw_setscheme(drw, scheme[SchemeTabActive]);
+			drw_rect(drw, 0, bh - 1, m->ww, 1, 1, 0);
 		}
 	}
 	drw_map(drw, m->barwin, 0, 0, m->ww, bh);
@@ -980,7 +1119,7 @@ grabkeys(void)
 void
 incnmaster(const Arg *arg)
 {
-	selmon->nmaster = MAX(selmon->nmaster + arg->i, 0);
+	selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->curtag] = MAX(selmon->nmaster + arg->i, 0);
 	arrange(selmon);
 }
 
@@ -1068,6 +1207,8 @@ manage(Window w, XWindowAttributes *wa)
 	updatewindowtype(c);
 	updatesizehints(c);
 	updatewmhints(c);
+	c->x = c->mon->mx + (c->mon->mw - WIDTH(c)) / 2;
+	c->y = c->mon->my + (c->mon->mh - HEIGHT(c)) / 2;
 	XSelectInput(dpy, w, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask);
 	grabbuttons(c, 0);
 	if (!c->isfloating)
@@ -1511,9 +1652,9 @@ void
 setlayout(const Arg *arg)
 {
 	if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt])
-		selmon->sellt ^= 1;
+		selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag] ^= 1;
 	if (arg && arg->v)
-		selmon->lt[selmon->sellt] = (Layout *)arg->v;
+		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt] = (Layout *)arg->v;
 	strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, sizeof selmon->ltsymbol);
 	if (selmon->sel)
 		arrange(selmon);
@@ -1532,7 +1673,7 @@ setmfact(const Arg *arg)
 	f = arg->f < 1.0 ? arg->f + selmon->mfact : arg->f - 1.0;
 	if (f < 0.05 || f > 0.95)
 		return;
-	selmon->mfact = f;
+	selmon->mfact = selmon->pertag->mfacts[selmon->pertag->curtag] = f;
 	arrange(selmon);
 }
 
@@ -1715,7 +1856,7 @@ tile(Monitor *m)
 void
 togglebar(const Arg *arg)
 {
-	selmon->showbar = !selmon->showbar;
+	selmon->showbar = selmon->pertag->showbars[selmon->pertag->curtag] = !selmon->showbar;
 	updatebarpos(selmon);
 	XMoveResizeWindow(dpy, selmon->barwin, selmon->wx, selmon->by, selmon->ww, bh);
 	arrange(selmon);
@@ -1733,6 +1874,13 @@ togglefloating(const Arg *arg)
 		resize(selmon->sel, selmon->sel->x, selmon->sel->y,
 			selmon->sel->w, selmon->sel->h, 0);
 	arrange(selmon);
+}
+
+void
+togglefullscr(const Arg *arg)
+{
+  if(selmon->sel)
+    setfullscreen(selmon->sel, !selmon->sel->isfullscreen);
 }
 
 void
@@ -1754,9 +1902,33 @@ void
 toggleview(const Arg *arg)
 {
 	unsigned int newtagset = selmon->tagset[selmon->seltags] ^ (arg->ui & TAGMASK);
+	int i;
 
 	if (newtagset) {
 		selmon->tagset[selmon->seltags] = newtagset;
+
+		if (newtagset == ~0) {
+			selmon->pertag->prevtag = selmon->pertag->curtag;
+			selmon->pertag->curtag = 0;
+		}
+
+		/* test if the user did not select the same tag */
+		if (!(newtagset & 1 << (selmon->pertag->curtag - 1))) {
+			selmon->pertag->prevtag = selmon->pertag->curtag;
+			for (i = 0; !(newtagset & 1 << i); i++) ;
+			selmon->pertag->curtag = i + 1;
+		}
+
+		/* apply settings for this view */
+		selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->curtag];
+		selmon->mfact = selmon->pertag->mfacts[selmon->pertag->curtag];
+		selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
+		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
+		selmon->lt[selmon->sellt^1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt^1];
+
+		if (selmon->showbar != selmon->pertag->showbars[selmon->pertag->curtag])
+			togglebar(NULL);
+
 		focus(NULL);
 		arrange(selmon);
 	}
@@ -2053,11 +2225,37 @@ updatewmhints(Client *c)
 void
 view(const Arg *arg)
 {
+	int i;
+	unsigned int tmptag;
+
 	if ((arg->ui & TAGMASK) == selmon->tagset[selmon->seltags])
 		return;
 	selmon->seltags ^= 1; /* toggle sel tagset */
-	if (arg->ui & TAGMASK)
+	if (arg->ui & TAGMASK) {
 		selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
+		selmon->pertag->prevtag = selmon->pertag->curtag;
+
+		if (arg->ui == ~0)
+			selmon->pertag->curtag = 0;
+		else {
+			for (i = 0; !(arg->ui & 1 << i); i++) ;
+			selmon->pertag->curtag = i + 1;
+		}
+	} else {
+		tmptag = selmon->pertag->prevtag;
+		selmon->pertag->prevtag = selmon->pertag->curtag;
+		selmon->pertag->curtag = tmptag;
+	}
+
+	selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->curtag];
+	selmon->mfact = selmon->pertag->mfacts[selmon->pertag->curtag];
+	selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
+	selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
+	selmon->lt[selmon->sellt^1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt^1];
+
+	if (selmon->showbar != selmon->pertag->showbars[selmon->pertag->curtag])
+		togglebar(NULL);
+
 	focus(NULL);
 	arrange(selmon);
 }
