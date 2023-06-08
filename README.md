@@ -1,3 +1,11 @@
+# GB's DWM UwU
+
+DWM is a dynamic X window manager create by [Suckless](https://suckless.org).
+This is my fork of it.
+
+### Verbatim, original README:
+
+```
 dwm - dynamic window manager
 ============================
 dwm is an extremely fast, small, and dynamic window manager for X.
@@ -46,3 +54,4 @@ Configuration
 -------------
 The configuration of dwm is done by creating a custom config.h
 and (re)compiling the source code.
+```
