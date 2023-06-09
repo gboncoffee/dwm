@@ -51,6 +51,8 @@ static const Layout layouts[] = {
     { "[=]",      doubledeck },
 	{ "[]=",      tile },
 	{ "[M]",      monocle },
+	{ "=<>",      NULL },
+	{ NULL,       NULL },
 };
 
 /* key definitions */
@@ -97,6 +99,9 @@ static const char *mus_next[] = { "mpc", "next", NULL };
 static const char *mus_prev[] = { "mpc", "prev", NULL };
 static const char *mus_toggle[] = { "mpc", "toggle", NULL };
 
+// theme
+static const char *change_theme[] = { "theme_change", NULL };
+
 static const Key keys[] = {
 	/* modifier                     key        function        argument */
 	{ MODKEY,                       XK_a,      spawn,          {.v = dmenucmd } },
@@ -124,6 +129,8 @@ static const Key keys[] = {
 	{ Mod1Mask|ControlMask,         XK_h,      spawn,          {.v = mus_prev } },
 	{ Mod1Mask|ControlMask,         XK_p,      spawn,          {.v = mus_toggle } },
 
+	{ MODKEY|ControlMask,           XK_t,      spawn,          {.v = change_theme } },
+
 	{ MODKEY|ShiftMask,             XK_b,      togglebar,      {0} },
 	{ MODKEY,                       XK_j,      focusstack,     {.i = +1 } },
 	{ MODKEY,                       XK_k,      focusstack,     {.i = -1 } },
@@ -137,11 +144,25 @@ static const Key keys[] = {
 	{ MODKEY|ShiftMask,             XK_f,      togglefullscr,  {0} },
 	{ MODKEY,                       XK_Tab,    view,           {0} },
 	{ MODKEY,                       XK_w,      killclient,     {0} },
-	{ MODKEY|ShiftMask,             XK_d,      setlayout,      {.v = &layouts[0]} },
-	{ MODKEY|ShiftMask,             XK_t,      setlayout,      {.v = &layouts[1]} },
-	{ MODKEY|ShiftMask,             XK_m,      setlayout,      {.v = &layouts[2]} },
-	{ MODKEY,                       XK_space,  setlayout,      {0} },
-	{ MODKEY|ShiftMask,             XK_space,  togglefloating, {0} },
+	{ MODKEY,                       XK_space,  cyclelayout,    {.i = +1} },
+	{ MODKEY|ShiftMask,             XK_space,  cyclelayout,    {.i = -1} },
+	{ MODKEY|ShiftMask,             XK_t,      togglefloating, {0} },
+	{ MODKEY,                       XK_Down,   moveresize,     {.v = "0x 25y 0w 0h" } },
+	{ MODKEY,                       XK_Up,     moveresize,     {.v = "0x -25y 0w 0h" } },
+	{ MODKEY,                       XK_Right,  moveresize,     {.v = "25x 0y 0w 0h" } },
+	{ MODKEY,                       XK_Left,   moveresize,     {.v = "-25x 0y 0w 0h" } },
+	{ MODKEY|ShiftMask,             XK_Down,   moveresize,     {.v = "0x 0y 0w 25h" } },
+	{ MODKEY|ShiftMask,             XK_Up,     moveresize,     {.v = "0x 0y 0w -25h" } },
+	{ MODKEY|ShiftMask,             XK_Right,  moveresize,     {.v = "0x 0y 25w 0h" } },
+	{ MODKEY|ShiftMask,             XK_Left,   moveresize,     {.v = "0x 0y -25w 0h" } },
+	{ MODKEY|ControlMask,           XK_Up,     moveresizeedge, {.v = "t"} },
+	{ MODKEY|ControlMask,           XK_Down,   moveresizeedge, {.v = "b"} },
+	{ MODKEY|ControlMask,           XK_Left,   moveresizeedge, {.v = "l"} },
+	{ MODKEY|ControlMask,           XK_Right,  moveresizeedge, {.v = "r"} },
+	{ MODKEY|ControlMask|ShiftMask, XK_Up,     moveresizeedge, {.v = "T"} },
+	{ MODKEY|ControlMask|ShiftMask, XK_Down,   moveresizeedge, {.v = "B"} },
+	{ MODKEY|ControlMask|ShiftMask, XK_Left,   moveresizeedge, {.v = "L"} },
+	{ MODKEY|ControlMask|ShiftMask, XK_Right,  moveresizeedge, {.v = "R"} },
 	{ MODKEY,                       XK_0,      view,           {.ui = ~0 } },
 	{ MODKEY|ShiftMask,             XK_0,      tag,            {.ui = ~0 } },
 	{ MODKEY,                       XK_comma,  focusmon,       {.i = -1 } },
