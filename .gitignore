@@ -2,3 +2,4 @@ drw.o
 dwm.o
 util.o
 dwm
+colors.h
