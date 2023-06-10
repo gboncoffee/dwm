@@ -30,7 +30,6 @@ static const Rule rules[] = {
 	/* class      instance    title       tags mask     isfloating   monitor */
 	{ "Gimp",      NULL,       NULL,       0,            1,           -1 },
 	{ "floating",  NULL,       NULL,       0,            1,           -1 },
-	{ "spectacle", NULL,       NULL,       0,            1,           -1 },
 };
 
 /* layout(s) */
@@ -83,7 +82,7 @@ static const char *pulsecmd[] = { TERM, "-c", "floating", "-e", "pulsemixer", NU
 static const char *musiccmd[] = { TERM, "-c", "floating", "-e", "ncmpcpp", NULL };
 static const char *fmcmd[] = { TERM, "-e", "lf", NULL };
 
-static const char *screenshot[] = { "spectacle", NULL };
+static const char *screenshot[] = { "flameshot", "gui", NULL };
 static const char *notifyclose[] = { "dunstctl", "close", NULL };
 
 // dmenu scripts
