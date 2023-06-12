@@ -80,7 +80,7 @@ static const char *emailcmd[] = { "thunderbird", NULL };
 static const char *calccmd[] = { TERM, "-c", "floating", "-e", "python", NULL };
 static const char *pulsecmd[] = { TERM, "-c", "floating", "-e", "pulsemixer", NULL };
 static const char *musiccmd[] = { TERM, "-c", "floating", "-e", "ncmpcpp", NULL };
-static const char *fmcmd[] = { TERM, "-e", "lf", NULL };
+static const char *fmcmd[] = { TERM, "-e", "nnn", NULL };
 
 static const char *screenshot[] = { "flameshot", "gui", NULL };
 static const char *notifyclose[] = { "dunstctl", "close", NULL };
