@@ -8,9 +8,9 @@ static const int showbar           = 1;        /* 0 means no bar */
 static const int topbar            = 1;        /* 0 means bottom bar */
 static const char *fonts[]         = { "CaskaydiaCove Nerd Font:size=15" };
 static const char dmenufont[]      = "CaskaydiaCove Nerd Font:size=15";
-static const char col_fg[]         = "#CDD6F4";
-static const char col_bg[]         = "#1E1E2E";
-static const char col_sel[]        = "#F5C2E7";
+static const char col_fg[]         = "#f8f8f2";
+static const char col_bg[]         = "#272822";
+static const char col_sel[]        = "#ae81ff";
 static const char *colors[][3]     = {
 	/*                      fg      bg       border */
 	[SchemeNorm]        = { col_fg, col_bg,  col_bg  },
