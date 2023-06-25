@@ -15,7 +15,7 @@ static const char *colors[][3]     = {
 	/*                      fg      bg       border */
 	[SchemeNorm]        = { col_fg, col_bg,  col_bg  },
 	[SchemeSel]         = { col_bg, col_sel, col_sel },
-	[SchemeTabActive]   = { col_fg, col_bg,  col_bg  },
+	[SchemeTabActive]   = { col_bg, col_sel, col_sel },
 	[SchemeTabInactive] = { col_fg, col_bg,  col_bg  }
 };
 
@@ -43,7 +43,7 @@ static const int scrollsensetivity = 30; /* 1 means resize window by 1 pixel for
 
 /* Bartabgroups properties */
 #define BARTAB_BORDERS 1       // 0 = off, 1 = on
-#define BARTAB_BOTTOMBORDER 1  // 0 = off, 1 = on
+#define BARTAB_BOTTOMBORDER 0  // 0 = off, 1 = on
 #define BARTAB_TAGSINDICATOR 1 // 0 = off, 1 = on if >1 client/view tag, 2 = always on
 #define BARTAB_TAGSPX 5        // # pixels for tag grid boxes
 #define BARTAB_TAGSROWS 3      // # rows in tag grid (9 tags, e.g. 3x3)
@@ -52,11 +52,9 @@ static void (*bartabfloatfns[])(Monitor *) = { NULL /* , customlayoutfn */ };
 
 static const Layout layouts[] = {
 	/* symbol     arrange function */
-    { "[=]",      doubledeck },
 	{ "[]=",      tile },
 	{ "[M]",      monocle },
-	{ "=<>",      NULL },
-	{ NULL,       NULL },
+	{ "><>",      NULL },
 };
 
 /* key definitions */
@@ -148,8 +146,9 @@ static const Key keys[] = {
 	{ MODKEY|ShiftMask,             XK_f,      togglefullscr,  {0} },
 	{ MODKEY,                       XK_Tab,    view,           {0} },
 	{ MODKEY,                       XK_w,      killclient,     {0} },
-	{ MODKEY,                       XK_space,  cyclelayout,    {.i = +1} },
-	{ MODKEY|ShiftMask,             XK_space,  cyclelayout,    {.i = -1} },
+ 	{ MODKEY|ControlMask,           XK_t,      setlayout,      {.v = &layouts[0]} },
+ 	{ MODKEY|ControlMask,           XK_m,      setlayout,      {.v = &layouts[1]} },
+ 	{ MODKEY|ControlMask,           XK_f,      setlayout,      {.v = &layouts[2]} },
 	{ MODKEY|ShiftMask,             XK_t,      togglefloating, {0} },
 	{ MODKEY,                       XK_Down,   moveresize,     {.v = "0x 25y 0w 0h" } },
 	{ MODKEY,                       XK_Up,     moveresize,     {.v = "0x -25y 0w 0h" } },
